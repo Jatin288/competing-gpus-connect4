@@ -1,0 +1,63 @@
+=================================================================
+  CUDA AT SCALE: COMPETING GPUS CONNECT 4 TOURNAMENT
+=================================================================
+Detected 2 Logical GPU Competitor Processes:
+  Competitor 1 (RED)    : GPU 0 [Tesla T4 / RTX] - Parallel Minimax (Tree Search)
+  Competitor 2 (YELLOW) : GPU 1 [Tesla T4 / RTX] - Parallel Monte Carlo Rollouts (MCTS)
+  Synchronization Mode  : Lock-file IPC / Alternating CUDA Device Contexts
+-----------------------------------------------------------------
+[Turn  1] RED    (Parallel Minimax   ) -> Col 3 (Row 5) in 1.69 ms
+[Turn  2] YELLOW (Monte Carlo Rollout) -> Col 3 (Row 4) in 2.17 ms
+[Turn  3] RED    (Parallel Minimax   ) -> Col 2 (Row 5) in 1.82 ms
+[Turn  4] YELLOW (Monte Carlo Rollout) -> Col 4 (Row 5) in 2.33 ms
+[Turn  5] RED    (Parallel Minimax   ) -> Col 4 (Row 4) in 1.58 ms
+[Turn  6] YELLOW (Monte Carlo Rollout) -> Col 1 (Row 5) in 2.40 ms
+[Turn  7] RED    (Parallel Minimax   ) -> Col 3 (Row 3) in 1.81 ms
+[Turn  8] YELLOW (Monte Carlo Rollout) -> Col 1 (Row 4) in 2.38 ms
+[Turn  9] RED    (Parallel Minimax   ) -> Col 5 (Row 5) in 1.90 ms
+[Turn 10] YELLOW (Monte Carlo Rollout) -> Col 1 (Row 3) in 2.36 ms
+[Turn 11] RED    (Parallel Minimax   ) -> Col 1 (Row 2) in 1.57 ms
+[Turn 12] YELLOW (Monte Carlo Rollout) -> Col 2 (Row 4) in 2.24 ms
+[Turn 13] RED    (Parallel Minimax   ) -> Col 1 (Row 1) in 1.85 ms
+[Turn 14] YELLOW (Monte Carlo Rollout) -> Col 0 (Row 5) in 2.11 ms
+[Turn 15] RED    (Parallel Minimax   ) -> Col 0 (Row 4) in 1.59 ms
+[Turn 16] YELLOW (Monte Carlo Rollout) -> Col 3 (Row 2) in 2.37 ms
+[Turn 17] RED    (Parallel Minimax   ) -> Col 2 (Row 3) in 1.82 ms
+[Turn 18] YELLOW (Monte Carlo Rollout) -> Col 2 (Row 2) in 2.08 ms
+[Turn 19] RED    (Parallel Minimax   ) -> Col 4 (Row 3) in 1.54 ms
+[Turn 20] YELLOW (Monte Carlo Rollout) -> Col 3 (Row 1) in 2.40 ms
+[Turn 21] RED    (Parallel Minimax   ) -> Col 4 (Row 2) in 1.74 ms
+[Turn 22] YELLOW (Monte Carlo Rollout) -> Col 4 (Row 1) in 1.98 ms
+[Turn 23] RED    (Parallel Minimax   ) -> Col 4 (Row 0) in 1.69 ms
+[Turn 24] YELLOW (Monte Carlo Rollout) -> Col 2 (Row 1) in 2.05 ms
+[Turn 25] RED    (Parallel Minimax   ) -> Col 3 (Row 0) in 1.76 ms
+[Turn 26] YELLOW (Monte Carlo Rollout) -> Col 1 (Row 0) in 2.29 ms
+[Turn 27] RED    (Parallel Minimax   ) -> Col 2 (Row 0) in 1.71 ms
+[Turn 28] YELLOW (Monte Carlo Rollout) -> Col 6 (Row 5) in 2.33 ms
+[Turn 29] RED    (Parallel Minimax   ) -> Col 0 (Row 3) in 1.51 ms
+[Turn 30] YELLOW (Monte Carlo Rollout) -> Col 0 (Row 2) in 2.35 ms
+[Turn 31] RED    (Parallel Minimax   ) -> Col 0 (Row 1) in 1.83 ms
+[Turn 32] YELLOW (Monte Carlo Rollout) -> Col 6 (Row 4) in 2.41 ms
+[Turn 33] RED    (Parallel Minimax   ) -> Col 6 (Row 3) in 1.73 ms
+[Turn 34] YELLOW (Monte Carlo Rollout) -> Col 5 (Row 4) in 2.18 ms
+[Turn 35] RED    (Parallel Minimax   ) -> Col 5 (Row 3) in 1.65 ms
+-----------------------------------------------------------------
+
+   0   1   2   3   4   5   6
+ +---+---+---+---+---+---+---+
+ |   | Y | R | R | R |   |   |
+ +---+---+---+---+---+---+---+
+ | R | R | Y | Y | Y |   |   |
+ +---+---+---+---+---+---+---+
+ | Y | R | Y | Y | R |   |   |
+ +---+---+---+---+---+---+---+
+ | R | Y | R | R | R | R | R |
+ +---+---+---+---+---+---+---+
+ | R | Y | Y | Y | R | Y | Y |
+ +---+---+---+---+---+---+---+
+ | Y | Y | R | R | Y | R | Y |
+ +---+---+---+---+---+---+---+
+
+=================================================================
+  MATCH RESULT: RED (GPU 0 - Parallel Minimax) WINS IN 35 TURNS!
+=================================================================

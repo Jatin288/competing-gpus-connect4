@@ -1,0 +1,5860 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CUDA Competing GPUs: Connect 4 Tournament Visualizer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Outfit:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0b0f19;
+      --card-bg: rgba(18, 24, 38, 0.85);
+      --card-border: rgba(255, 255, 255, 0.08);
+      --red-color: #ff3366;
+      --red-glow: rgba(255, 51, 102, 0.4);
+      --yellow-color: #ffbe0b;
+      --yellow-glow: rgba(255, 190, 11, 0.4);
+      --blue-board: #152238;
+      --blue-border: #1e3a8a;
+      --slot-empty: #0a0f1d;
+      --accent: #38bdf8;
+      --text-main: #f1f5f9;
+      --text-muted: #94a3b8;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      background-image: radial-gradient(circle at 20% 15%, rgba(56, 189, 248, 0.08) 0%, transparent 40%),
+                        radial-gradient(circle at 80% 85%, rgba(255, 51, 102, 0.08) 0%, transparent 40%);
+      color: var(--text-main);
+      font-family: 'Outfit', sans-serif;
+      min-height: 100vh;
+      padding: 24px;
+      overflow-x: hidden;
+    }
+
+    .container {
+      max-width: 1280px;
+      margin: 0 auto;
+    }
+
+    /* Header */
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--card-border);
+    }
+    .title-group h1 {
+      font-size: 28px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      background: linear-gradient(135deg, #fff 30%, var(--accent) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .badge-cuda {
+      background: rgba(118, 185, 0, 0.2);
+      border: 1px solid #76b900;
+      color: #76b900;
+      font-size: 12px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 700;
+    }
+    .subtitle {
+      color: var(--text-muted);
+      font-size: 14px;
+      margin-top: 4px;
+    }
+
+    /* Grid layout */
+    .main-grid {
+      display: grid;
+      grid-template-columns: 320px 1fr 340px;
+      gap: 24px;
+      align-items: start;
+    }
+    @media (max-width: 1100px) {
+      .main-grid { grid-template-columns: 1fr; }
+    }
+
+    /* Cards */
+    .card {
+      background: var(--card-bg);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 20px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+    }
+
+    /* Competitor Cards */
+    .competitor-card {
+      position: relative;
+      overflow: hidden;
+      margin-bottom: 16px;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .competitor-card.active-p1 {
+      border-color: var(--red-color);
+      box-shadow: 0 0 25px var(--red-glow);
+    }
+    .competitor-card.active-p2 {
+      border-color: var(--yellow-color);
+      box-shadow: 0 0 25px var(--yellow-glow);
+    }
+    .comp-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .comp-name {
+      font-weight: 700;
+      font-size: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .indicator-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+    }
+    .dot-red { background: var(--red-color); box-shadow: 0 0 8px var(--red-color); }
+    .dot-yellow { background: var(--yellow-color); box-shadow: 0 0 8px var(--yellow-color); }
+    .comp-algo {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+    }
+    .stat-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 13px;
+      padding: 6px 0;
+      border-top: 1px solid rgba(255,255,255,0.04);
+    }
+    .stat-label { color: var(--text-muted); }
+    .stat-val { font-family: 'JetBrains Mono', monospace; font-weight: 600; }
+
+    /* Center Board Section */
+    .board-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .hud-banner {
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 20px;
+      background: rgba(15, 23, 42, 0.7);
+      border-radius: 12px;
+      margin-bottom: 16px;
+      border: 1px solid var(--card-border);
+    }
+    .hud-turn {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 14px;
+      font-weight: 700;
+    }
+    .hud-winner {
+      font-weight: 700;
+      font-size: 14px;
+      padding: 4px 12px;
+      border-radius: 6px;
+      background: rgba(34, 197, 94, 0.2);
+      border: 1px solid #22c55e;
+      color: #4ade80;
+    }
+
+    /* Connect 4 Board */
+    .c4-board {
+      background: var(--blue-board);
+      border: 4px solid var(--blue-border);
+      border-radius: 18px;
+      padding: 16px;
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 12px;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.6), inset 0 2px 6px rgba(255,255,255,0.1);
+      position: relative;
+    }
+    .c4-slot {
+      width: 58px;
+      height: 58px;
+      background: var(--slot-empty);
+      border-radius: 50%;
+      box-shadow: inset 0 4px 8px rgba(0,0,0,0.8), 0 1px 2px rgba(255,255,255,0.08);
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .checker {
+      width: 52px;
+      height: 52px;
+      border-radius: 50%;
+      transform: scale(0);
+      transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    .checker.piece-red {
+      background: radial-gradient(circle at 35% 35%, #ff6b8b, var(--red-color) 70%, #990026 100%);
+      box-shadow: 0 0 15px var(--red-glow), inset 0 2px 4px rgba(255,255,255,0.4);
+      transform: scale(1);
+    }
+    .checker.piece-yellow {
+      background: radial-gradient(circle at 35% 35%, #fff066, var(--yellow-color) 70%, #b38600 100%);
+      box-shadow: 0 0 15px var(--yellow-glow), inset 0 2px 4px rgba(255,255,255,0.4);
+      transform: scale(1);
+    }
+    .checker.last-drop {
+      border: 2px solid #ffffff;
+      animation: pulse-ring 1.5s infinite;
+    }
+    @keyframes pulse-ring {
+      0% { box-shadow: 0 0 0 0 rgba(255,255,255,0.6); }
+      70% { box-shadow: 0 0 0 10px rgba(255,255,255,0); }
+      100% { box-shadow: 0 0 0 0 rgba(255,255,255,0); }
+    }
+
+    .col-header {
+      display: flex;
+      justify-content: space-around;
+      width: 100%;
+      padding: 0 16px 8px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    /* Controls */
+    .controls {
+      display: flex;
+      gap: 10px;
+      margin-top: 20px;
+      align-items: center;
+    }
+    .btn {
+      background: rgba(30, 41, 59, 0.8);
+      border: 1px solid var(--card-border);
+      color: var(--text-main);
+      padding: 10px 18px;
+      border-radius: 10px;
+      font-family: 'Outfit', sans-serif;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .btn:hover {
+      background: rgba(51, 65, 85, 0.9);
+      border-color: var(--accent);
+    }
+    .btn-primary {
+      background: #0284c7;
+      border-color: #38bdf8;
+    }
+    .btn-primary:hover {
+      background: #0369a1;
+    }
+
+    /* Right Panel: Algorithm Heatmap & Log */
+    .panel-title {
+      font-size: 15px;
+      font-weight: 700;
+      margin-bottom: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .eval-bars {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 20px;
+    }
+    .eval-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .bar-bg {
+      flex: 1;
+      height: 8px;
+      background: rgba(255,255,255,0.06);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .bar-fill {
+      height: 100%;
+      border-radius: 4px;
+      transition: width 0.3s ease;
+    }
+
+    .move-log-box {
+      max-height: 240px;
+      overflow-y: auto;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .log-item {
+      padding: 6px 10px;
+      border-radius: 6px;
+      background: rgba(0,0,0,0.2);
+      border-left: 3px solid transparent;
+      cursor: pointer;
+    }
+    .log-item:hover { background: rgba(255,255,255,0.05); }
+    .log-item.active { background: rgba(56, 189, 248, 0.15); border-left-color: var(--accent); }
+    .log-item.red { border-left-color: var(--red-color); }
+    .log-item.yellow { border-left-color: var(--yellow-color); }
+
+    /* Description Section */
+    .docs-section {
+      margin-top: 32px;
+      border-top: 1px solid var(--card-border);
+      padding-top: 24px;
+    }
+    .docs-section h2 {
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 16px;
+      color: var(--accent);
+    }
+    .docs-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 20px;
+    }
+    .doc-block {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 18px;
+    }
+    .doc-block h3 {
+      font-size: 15px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .doc-block p, .doc-block li {
+      font-size: 13px;
+      color: var(--text-muted);
+      line-height: 1.6;
+    }
+    .doc-block ul { padding-left: 18px; margin-top: 6px; }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <header>
+    <div class="title-group">
+      <h1>
+        CUDA Competing GPUs: Connect 4
+        <span class="badge-cuda">CUDA at Scale</span>
+      </h1>
+      <p class="subtitle">Dual-GPU Game Tournament: Parallel Minimax vs. Monte Carlo Tree Search (MCTS)</p>
+    </div>
+    <div style="text-align: right;">
+      <span style="font-size: 12px; color: var(--text-muted);">Author: Jatin Pawar</span><br>
+      <a href="https://github.com/Jatin288/competing-gpus-connect4" target="_blank" style="color: var(--accent); font-size: 12px; text-decoration: none;">GitHub Repository &rarr;</a>
+    </div>
+  </header>
+
+  <div class="main-grid">
+    <!-- Left Column: Competitors -->
+    <div>
+      <div id="card-p1" class="card competitor-card active-p1">
+        <div class="comp-header">
+          <span class="comp-name">
+            <span class="indicator-dot dot-red"></span>
+            GPU 0: Competitor Red
+          </span>
+          <span class="badge-cuda" style="border-color: var(--red-color); color: var(--red-color);">Red</span>
+        </div>
+        <div class="comp-algo">Parallel Minimax (Depth 3)</div>
+        <div class="stat-row">
+          <span class="stat-label">Architecture</span>
+          <span class="stat-val">Tree Search Reduction</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">CUDA Threads</span>
+          <span class="stat-val">1,792 (7 Ã— 256)</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Last Move Time</span>
+          <span id="p1-latency" class="stat-val">1.69 ms</span>
+        </div>
+      </div>
+
+      <div id="card-p2" class="card competitor-card">
+        <div class="comp-header">
+          <span class="comp-name">
+            <span class="indicator-dot dot-yellow"></span>
+            GPU 1: Competitor Yellow
+          </span>
+          <span class="badge-cuda" style="border-color: var(--yellow-color); color: var(--yellow-color);">Yellow</span>
+        </div>
+        <div class="comp-algo">Monte Carlo Rollouts (MCTS)</div>
+        <div class="stat-row">
+          <span class="stat-label">Architecture</span>
+          <span class="stat-val">LCG Random Rollouts</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Rollouts / Move</span>
+          <span class="stat-val">7,168 (1,024 / col)</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Last Move Time</span>
+          <span id="p2-latency" class="stat-val">2.17 ms</span>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top: 16px;">
+        <div class="panel-title">
+          <span>Synchronization Telemetry</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Multi-GPU Mode</span>
+          <span class="stat-val">cudaSetDevice(0 / 1)</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Lock Mechanism</span>
+          <span class="stat-val">Atomic / File-Lock IPC</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Total Match Turns</span>
+          <span id="hud-total-turns" class="stat-val">35</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Center Column: Connect 4 Grid -->
+    <div class="board-container">
+      <div class="hud-banner">
+        <span class="hud-turn" id="hud-turn-text">TURN 1 / 35</span>
+        <span id="hud-status" class="hud-winner">MATCH COMPLETED</span>
+      </div>
+
+      <div class="col-header">
+        <span>0</span><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span>
+      </div>
+
+      <div class="c4-board" id="board-grid">
+        <!-- 42 slots generated by JS -->
+      </div>
+
+      <div class="controls">
+        <button id="btn-prev" class="btn">&#9664; Prev</button>
+        <button id="btn-play" class="btn btn-primary">&#9654; Play</button>
+        <button id="btn-next" class="btn">Next &#9654;</button>
+        <button id="btn-reset" class="btn">&#8634; Reset</button>
+      </div>
+    </div>
+
+    <!-- Right Column: Candidate Evaluations & Move History -->
+    <div>
+      <div class="card" style="margin-bottom: 16px;">
+        <div class="panel-title">
+          <span>Move Evaluations (Col 0-6)</span>
+          <span id="eval-player-tag" style="font-size: 11px; color: var(--text-muted);">GPU 0</span>
+        </div>
+        <div class="eval-bars" id="eval-bars-container">
+          <!-- 7 evaluation bars generated by JS -->
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="panel-title">
+          <span>Turn-by-Turn Trace</span>
+        </div>
+        <div class="move-log-box" id="move-log-list">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Peer Grading & Architecture Walkthrough -->
+  <div class="docs-section">
+    <h2>Project Architecture & Design Walkthrough</h2>
+    <div class="docs-grid">
+      <div class="doc-block">
+        <h3>ðŸ”´ Competitor 1: GPU Minimax</h3>
+        <p>Uses a parallel depth tree search evaluating all 7 candidate column drops simultaneously in separate CUDA thread blocks.</p>
+        <ul>
+          <li><strong>Block Hierarchy:</strong> 7 blocks (one per candidate column), each launching 256 threads.</li>
+          <li><strong>Tree Search:</strong> Threads evaluate prospective 2-ply and 3-ply combinations of opponent replies.</li>
+          <li><strong>Shared Memory Reduction:</strong> Block-wide parallel reduction minimizes global memory round-trips to score candidate heuristic utility.</li>
+        </ul>
+      </div>
+
+      <div class="doc-block">
+        <h3>ðŸŸ¡ Competitor 2: GPU Monte Carlo (MCTS)</h3>
+        <p>Uses massive thread parallelism to simulate stochastic games forward in time.</p>
+        <ul>
+          <li><strong>Parallel Rollouts:</strong> Launches 1,024 independent random rollouts per legal column.</li>
+          <li><strong>Linear Congruential Generator:</strong> Ultra-fast register-based PRNG computes thousands of random turns without CPU overhead.</li>
+          <li><strong>Atomic Accumulation:</strong> Atomic add tallies wins/losses directly in shared memory to select the column with the highest win probability.</li>
+        </ul>
+      </div>
+
+      <div class="doc-block">
+        <h3>âš¡ Inter-GPU Synchronization</h3>
+        <p>Addresses the dual-GPU tournament requirement with seamless fallback for single-GPU environments.</p>
+        <ul>
+          <li><strong>Dual Physical GPUs:</strong> Assigns separate device contexts via <code>cudaSetDevice(0)</code> and <code>cudaSetDevice(1)</code>.</li>
+          <li><strong>Coursera Lab Fallback:</strong> Employs cooperative lock-file IPC (<code>game_turn.lock</code> and <code>board_state.json</code>) allowing two independent GPU processes to take turns without race conditions.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Embedded Match Data Fallback -->
+<script id="embedded-data" type="application/json">
+{
+  "game": "CUDA Competing GPUs: Connect 4 Tournament",
+  "competitor1": {
+    "name": "GPU 0 (Red)",
+    "device": "NVIDIA Tesla T4 (Compute 7.5, 40 SMs)",
+    "algorithm": "Parallel Minimax (Depth 3 Tree Search + Heuristic Reduction)"
+  },
+  "competitor2": {
+    "name": "GPU 1 (Yellow)",
+    "device": "NVIDIA Tesla T4 (Compute 7.5, 40 SMs)",
+    "algorithm": "Parallel Monte Carlo Rollout (1024 simulations per column)"
+  },
+  "winner": 1,
+  "winner_name": "RED (GPU 0 - Parallel Minimax)",
+  "total_turns": 35,
+  "moves": [
+    {
+      "turn": 1,
+      "player": 1,
+      "algorithm": "Parallel Minimax",
+      "column": 3,
+      "row": 5,
+      "latency_ms": 1.69,
+      "evaluations": [
+        0.0,
+        0.0,
+        0.0,
+        6.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "board": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "turn": 2,
+      "player": 2,
+      "algorithm": "Monte Carlo Rollout",
+      "column": 3,
+      "row": 4,
+      "latency_ms": 2.17,
+      "evaluations": [
+        0.02,
+        0.06,
+        0.02,
+        0.08,
+        0.02,
+        0.0,
+        0.02
+      ],
+      "board": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          2,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "turn": 3,
+      "player": 1,
+      "algorithm": "Parallel Minimax",
+      "column": 2,
+      "row": 5,
+      "latency_ms": 1.82,
+      "evaluations": [
+        6.0,
+        6.0,
+        16.0,
+        12.0,
+        16.0,
+        6.0,
+        6.0
+      ],
+      "board": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          2,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          1,
+          1,
+          0,
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "turn": 4,
+      "player": 2,
+      "algorithm": "Monte Carlo Rollout",
+      "column": 4,
+      "row": 5,
+      "latency_ms": 2.33,
+      "evaluations": [
+        0.04,
+        0.08,
+        0.08,
+        0.12,
+        0.17,
+        0.12,
+        0.06
+      ],
+      "board": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          2,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          1,
+          1,
+          2,
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "turn": 5,
+      "player": 1,
+      "algorithm": "Parallel Minimax",
+      "column": 4,
+      "row": 4,
+      "latency_ms": 1.58,
+      "evaluations": [
+        6.0,
+        6.0,
+        -54.0,
+        12.0,
+        16.0,
+        6.0,
+        6.0
+      ],
+      "board": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          1,
+          1,
+          2,
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "turn": 6,
+      "player": 2,
+      "algorithm": "Monte Carlo Rollout",
+      "column": 1,
+      "row": 5,
+      "latency_ms": 2.4,
+      "evaluations": [
+        0.1,
+        0.23,
+        0.21,
+        0.23,
+        0.04,
+        0.08,
+        0.08
+      ],
+      "board": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          1,
+          1,
+          2,
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "turn": 7,
+      "player": 1,
+      "algorithm": "Parallel Minimax",
+      "column": 3,
+      "row": 3,
+      "latency_ms": 1.81,
+      "evaluations": [
+        16.0,
+        16.0,
+        -54.0,
+        32.0,
+        16.0,
+        16.0,
+        16.0
+      ],
+      "board": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          1,
+          1,
+          2,
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "turn": 8,
+      "player": 2,
+      "algorithm": "Monte Carlo Rollout",
+      "column": 1,
+      "row": 4,
+      "latency_ms": 2.38,
+      "evaluations": [
+        0.1,
+        0.27,
+        0.12,
+        0.15,
+        0.08,
+        0.06,
+        0.17
+      ],
+      "board": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          0,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          1,
+          1,
+          2,
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "turn": 9,
+      "player": 1,
+      "algorithm": "Parallel Minimax",
+      "column": 5,
+      "row": 5,
+      "latency_ms": 1.9,
+      "evaluations": [
+        -38.0,
+        -18.0,
+        -18.0,
+        -22.0,
+        -8.0,
+        52.0,
+        -38.0
+      ],
+      "board": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          0,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          1,
+          1,
+          2,
+          1,
+          0
+        ]
+      ]
+    },
+    {
+      "turn": 10,
+      "player": 2,
+      "algorithm": "Monte Carlo Rollout",
+      "column": 1,
+      "row": 3,
+      "latency_ms": 2.36,
+      "evaluations": [
+        0.4,
+        0.52,
+        0.31,
+        0.33,
+        0.42,
+        0.31,
+        0.29
+      ],
+      "board": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          0,
+          1,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          0,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          1,
+          1,
+          2,
+          1,
+          0
+        ]
+      ]
+    },
+    {
+      "turn": 11,
+      "player": 1,
+      "algorithm": "Parallel Minimax",
+      "column": 1,
+      "row": 2,
+      "latency_ms": 1.57,
+      "evaluations": [
+        -50000.0,
+        52.0,
+        -50000.0,
+        -50000.0,
+        -50000.0,
+        -50000.0,
+        -50000.0
+      ],
+      "board": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          0,
+          1,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          0,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          1,
+          1,
+          2,
+          1,
+          0
+        ]
+      ]
+    },
+    {
+      "turn": 12,
+      "player": 2,
+      "algorithm": "Monte Carlo Rollout",
+      "column": 2,
+      "row": 4,
+      "latency_ms": 2.24,
+      "evaluations": [
+        0.27,
+        0.17,
+        0.33,
+        0.19,
+        0.17,
+        0.29,
+        0.29
+      ],
+      "board": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          0,
+          1,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          1,
+          1,
+          2,
+          1,
+          0
+        ]
+      ]
+    },
+    {
+      "turn": 13,
+      "player": 1,
+      "algorithm": "Parallel Minimax",
+      "column": 1,
+      "row": 1,
+      "latency_ms": 1.85,
+      "evaluations": [
+        -50000.0,
+        152.0,
+        -48.0,
+        78.0,
+        72.0,
+        42.0,
+        42.0
+      ],
+      "board": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          0,
+          1,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          1,
+          1,
+          2,
+          1,
+          0
+        ]
+      ]
+    },
+    {
+      "turn": 14,
+      "player": 2,
+      "algorithm": "Monte Carlo Rollout",
+      "column": 0,
+      "row": 5,
+      "latency_ms": 2.11,
+      "evaluations": [
+        0.44,
+        0.4,
+        0.44,
+        0.33,
+        0.42,
+        0.31,
+        0.33
+      ],
+      "board": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          0,
+          1,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          2,
+          2,
+          1,
+          1,
+          2,
+          1,
+          0
+        ]
+      ]
+    },
+    {
+      "turn": 15,
+      "player": 1,
+      "algorithm": "Parallel Minimax",
+      "column": 0,
+      "row": 4,
+      "latency_ms": 1.59,
+      "evaluations": [
+        152.0,
+        -50000.0,
+        -50000.0,
+        -50000.0,
+        -50000.0,
+        -50000.0,
+        -50000.0
+      ],
+      "board": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          0,
+          1,
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          2,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          2,
+          2,
+          1,
+          1,
+          2,
+          1,
+          0
+        ]
+      ]
+    },
+    {
+      "turn": 16,
+      "player": 2,
+      "algorithm": "Monte Carlo Rollout",
+      "column": 3,
+      "row": 2,
+      "latency_ms": 2.37,
+      "evaluations": [
+        0.08,
+        0.15,
+        0.44,
+        0.48,
+        0.31,
+        0.27,
+        0.27
+      ],
+      "board": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          2,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          0,
+          1,
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          2,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          2,
+          2,
+          1,
+          1,
+          2,
+          1,
+          0
+        ]
+      ]
+    },
+    {
+      "turn": 17,
+      "player": 1,
+      "algorithm": "Parallel Minimax",
+      "column": 2,
+      "row": 3,
+      "latency_ms": 1.82,
+      "evaluations": [
+        -50000.0,
+        -50000.0,
+        32.0,
+        -50000.0,
+        -50000.0,
+        -50000.0,
+        -50000.0
+      ],
+      "board": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          2,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          1,
+          1,
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          2,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          2,
+          2,
+          1,
+          1,
+          2,
+          1,
+          0
+        ]
+      ]
+    },
+    {
+      "turn": 18,
+      "player": 2,
+      "algorithm": "Monte Carlo Rollout",
+      "column": 2,
+      "row": 2,
+      "latency_ms": 2.08,
+      "evaluations": [
+        0.06,
+        0.06,
+        0.15,
+        0.04,
+        0.1,
+        0.1,
+        0.08
+      ],
+      "board": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          2,
+          2,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          1,
+          1,
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          2,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          2,
+          2,
+          1,
+          1,
+          2,
+          1,
+          0
+        ]
+      ]
+    },
+    {
+      "turn": 19,
+      "player": 1,
+      "algorithm": "Parallel Minimax",
+      "column": 4,
+      "row": 3,
+      "latency_ms": 1.54,
+      "evaluations": [
+        -28.0,
+        -48.0,
+        -38.0,
+        38.0,
+        52.0,
+        -38.0,
+        -48.0
+      ],
+      "board": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          2,
+          2,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          1,
+          2,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          2,
+          2,
+          1,
+          1,
+          2,
+          1,
+          0
+        ]
+      ]
+    },
+    {
+      "turn": 20,
+      "player": 2,
+      "algorithm": "Monte Carlo Rollout",
+      "column": 3,
+      "row": 1,
+      "latency_ms": 2.4,
+      "evaluations": [
+        0.1,
+        0.17,
+        0.0,
+        0.21,
+        0.19,
+        0.1,
+        0.04
+      ],
+      "board": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          2,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          2,
+          2,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          1,
+          2,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          2,
+          2,
+          1,
+          1,
+          2,
+          1,
+          0
+        ]
+      ]
+    },
+    {
+      "turn": 21,
+      "player": 1,
+      "algorithm": "Parallel Minimax",
+      "column": 4,
+      "row": 2,
+      "latency_ms": 1.74,
+      "evaluations": [
+        -8.0,
+        -28.0,
+        -18.0,
+        -12.0,
+        62.0,
+        -58.0,
+        -28.0
+      ],
+      "board": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          2,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          1,
+          2,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          2,
+          2,
+          1,
+          1,
+          2,
+          1,
+          0
+        ]
+      ]
+    },
+    {
+      "turn": 22,
+      "player": 2,
+      "algorithm": "Monte Carlo Rollout",
+      "column": 4,
+      "row": 1,
+      "latency_ms": 1.98,
+      "evaluations": [
+        0.1,
+        0.08,
+        0.23,
+        0.08,
+        0.46,
+        0.12,
+        0.15
+      ],
+      "board": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          2,
+          2,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          1,
+          2,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          2,
+          2,
+          1,
+          1,
+          2,
+          1,
+          0
+        ]
+      ]
+    },
+    {
+      "turn": 23,
+      "player": 1,
+      "algorithm": "Parallel Minimax",
+      "column": 4,
+      "row": 0,
+      "latency_ms": 1.69,
+      "evaluations": [
+        -50000.0,
+        -50000.0,
+        -50000.0,
+        -50000.0,
+        62.0,
+        -50000.0,
+        -50000.0
+      ],
+      "board": [
+        [
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          2,
+          2,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          1,
+          2,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          2,
+          2,
+          1,
+          1,
+          2,
+          1,
+          0
+        ]
+      ]
+    },
+    {
+      "turn": 24,
+      "player": 2,
+      "algorithm": "Monte Carlo Rollout",
+      "column": 2,
+      "row": 1,
+      "latency_ms": 2.05,
+      "evaluations": [
+        0.08,
+        0.06,
+        0.12,
+        0.12,
+        0.0,
+        0.08,
+        0.1
+      ],
+      "board": [
+        [
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          2,
+          2,
+          2,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          1,
+          2,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          2,
+          2,
+          1,
+          1,
+          2,
+          1,
+          0
+        ]
+      ]
+    },
+    {
+      "turn": 25,
+      "player": 1,
+      "algorithm": "Parallel Minimax",
+      "column": 3,
+      "row": 0,
+      "latency_ms": 1.76,
+      "evaluations": [
+        62.0,
+        62.0,
+        62.0,
+        78.0,
+        -999999.0,
+        -58.0,
+        62.0
+      ],
+      "board": [
+        [
+          0,
+          0,
+          0,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          2,
+          2,
+          2,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          1,
+          2,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          2,
+          2,
+          1,
+          1,
+          2,
+          1,
+          0
+        ]
+      ]
+    },
+    {
+      "turn": 26,
+      "player": 2,
+      "algorithm": "Monte Carlo Rollout",
+      "column": 1,
+      "row": 0,
+      "latency_ms": 2.29,
+      "evaluations": [
+        0.17,
+        0.27,
+        0.25,
+        0.0,
+        0.0,
+        0.08,
+        0.06
+      ],
+      "board": [
+        [
+          0,
+          2,
+          0,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          2,
+          2,
+          2,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          1,
+          2,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          2,
+          2,
+          1,
+          1,
+          2,
+          1,
+          0
+        ]
+      ]
+    },
+    {
+      "turn": 27,
+      "player": 1,
+      "algorithm": "Parallel Minimax",
+      "column": 2,
+      "row": 0,
+      "latency_ms": 1.71,
+      "evaluations": [
+        88.0,
+        -999999.0,
+        178.0,
+        -999999.0,
+        -999999.0,
+        -32.0,
+        78.0
+      ],
+      "board": [
+        [
+          0,
+          2,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          2,
+          2,
+          2,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          1,
+          2,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          2,
+          2,
+          1,
+          1,
+          2,
+          1,
+          0
+        ]
+      ]
+    },
+    {
+      "turn": 28,
+      "player": 2,
+      "algorithm": "Monte Carlo Rollout",
+      "column": 6,
+      "row": 5,
+      "latency_ms": 2.33,
+      "evaluations": [
+        0.19,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.19,
+        0.21
+      ],
+      "board": [
+        [
+          0,
+          2,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          2,
+          2,
+          2,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          1,
+          2,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          2,
+          2,
+          1,
+          1,
+          2,
+          1,
+          2
+        ]
+      ]
+    },
+    {
+      "turn": 29,
+      "player": 1,
+      "algorithm": "Parallel Minimax",
+      "column": 0,
+      "row": 3,
+      "latency_ms": 1.51,
+      "evaluations": [
+        178.0,
+        -999999.0,
+        -999999.0,
+        -999999.0,
+        -999999.0,
+        58.0,
+        168.0
+      ],
+      "board": [
+        [
+          0,
+          2,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          2,
+          2,
+          2,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          1,
+          2,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          1,
+          2,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          2,
+          2,
+          1,
+          1,
+          2,
+          1,
+          2
+        ]
+      ]
+    },
+    {
+      "turn": 30,
+      "player": 2,
+      "algorithm": "Monte Carlo Rollout",
+      "column": 0,
+      "row": 2,
+      "latency_ms": 2.35,
+      "evaluations": [
+        0.25,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.12,
+        0.17
+      ],
+      "board": [
+        [
+          0,
+          2,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          2,
+          2,
+          2,
+          0,
+          0
+        ],
+        [
+          2,
+          1,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          1,
+          2,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          1,
+          2,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          2,
+          2,
+          1,
+          1,
+          2,
+          1,
+          2
+        ]
+      ]
+    },
+    {
+      "turn": 31,
+      "player": 1,
+      "algorithm": "Parallel Minimax",
+      "column": 0,
+      "row": 1,
+      "latency_ms": 1.83,
+      "evaluations": [
+        178.0,
+        -999999.0,
+        -999999.0,
+        -999999.0,
+        -999999.0,
+        58.0,
+        168.0
+      ],
+      "board": [
+        [
+          0,
+          2,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          1,
+          1,
+          2,
+          2,
+          2,
+          0,
+          0
+        ],
+        [
+          2,
+          1,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          1,
+          2,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          1,
+          2,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          2,
+          2,
+          1,
+          1,
+          2,
+          1,
+          2
+        ]
+      ]
+    },
+    {
+      "turn": 32,
+      "player": 2,
+      "algorithm": "Monte Carlo Rollout",
+      "column": 6,
+      "row": 4,
+      "latency_ms": 2.41,
+      "evaluations": [
+        0.27,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.19,
+        0.34
+      ],
+      "board": [
+        [
+          0,
+          2,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          1,
+          1,
+          2,
+          2,
+          2,
+          0,
+          0
+        ],
+        [
+          2,
+          1,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          1,
+          2,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          1,
+          2,
+          2,
+          2,
+          1,
+          0,
+          2
+        ],
+        [
+          2,
+          2,
+          1,
+          1,
+          2,
+          1,
+          2
+        ]
+      ]
+    },
+    {
+      "turn": 33,
+      "player": 1,
+      "algorithm": "Parallel Minimax",
+      "column": 6,
+      "row": 3,
+      "latency_ms": 1.73,
+      "evaluations": [
+        88.0,
+        -999999.0,
+        -999999.0,
+        -999999.0,
+        -999999.0,
+        58.0,
+        258.0
+      ],
+      "board": [
+        [
+          0,
+          2,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          1,
+          1,
+          2,
+          2,
+          2,
+          0,
+          0
+        ],
+        [
+          2,
+          1,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          1,
+          2,
+          1,
+          1,
+          1,
+          0,
+          1
+        ],
+        [
+          1,
+          2,
+          2,
+          2,
+          1,
+          0,
+          2
+        ],
+        [
+          2,
+          2,
+          1,
+          1,
+          2,
+          1,
+          2
+        ]
+      ]
+    },
+    {
+      "turn": 34,
+      "player": 2,
+      "algorithm": "Monte Carlo Rollout",
+      "column": 5,
+      "row": 4,
+      "latency_ms": 2.18,
+      "evaluations": [
+        0.12,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.19,
+        0.12
+      ],
+      "board": [
+        [
+          0,
+          2,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          1,
+          1,
+          2,
+          2,
+          2,
+          0,
+          0
+        ],
+        [
+          2,
+          1,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          1,
+          2,
+          1,
+          1,
+          1,
+          0,
+          1
+        ],
+        [
+          1,
+          2,
+          2,
+          2,
+          1,
+          2,
+          2
+        ],
+        [
+          2,
+          2,
+          1,
+          1,
+          2,
+          1,
+          2
+        ]
+      ]
+    },
+    {
+      "turn": 35,
+      "player": 1,
+      "algorithm": "Parallel Minimax",
+      "column": 5,
+      "row": 3,
+      "latency_ms": 1.65,
+      "evaluations": [
+        58.0,
+        -999999.0,
+        -999999.0,
+        -999999.0,
+        -999999.0,
+        100000.0,
+        68.0
+      ],
+      "board": [
+        [
+          0,
+          2,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          1,
+          1,
+          2,
+          2,
+          2,
+          0,
+          0
+        ],
+        [
+          2,
+          1,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          1,
+          2,
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        [
+          1,
+          2,
+          2,
+          2,
+          1,
+          2,
+          2
+        ],
+        [
+          2,
+          2,
+          1,
+          1,
+          2,
+          1,
+          2
+        ]
+      ]
+    }
+  ]
+}
+</script>
+
+<script>
+  let gameData = null;
+  let currentStep = 0;
+  let isPlaying = false;
+  let playInterval = null;
+
+  async function loadData() {
+    try {
+      const resp = await fetch('game_trace.json');
+      if (resp.ok) {
+        gameData = await resp.json();
+      }
+    } catch (e) {
+      console.log("Fetch failed, using embedded trace data");
+    }
+    if (!gameData) {
+      const raw = document.getElementById('embedded-data').textContent.trim();
+      if (raw && !raw.includes('{
+  "game": "CUDA Competing GPUs: Connect 4 Tournament",
+  "competitor1": {
+    "name": "GPU 0 (Red)",
+    "device": "NVIDIA Tesla T4 (Compute 7.5, 40 SMs)",
+    "algorithm": "Parallel Minimax (Depth 3 Tree Search + Heuristic Reduction)"
+  },
+  "competitor2": {
+    "name": "GPU 1 (Yellow)",
+    "device": "NVIDIA Tesla T4 (Compute 7.5, 40 SMs)",
+    "algorithm": "Parallel Monte Carlo Rollout (1024 simulations per column)"
+  },
+  "winner": 1,
+  "winner_name": "RED (GPU 0 - Parallel Minimax)",
+  "total_turns": 35,
+  "moves": [
+    {
+      "turn": 1,
+      "player": 1,
+      "algorithm": "Parallel Minimax",
+      "column": 3,
+      "row": 5,
+      "latency_ms": 1.69,
+      "evaluations": [
+        0.0,
+        0.0,
+        0.0,
+        6.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "board": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "turn": 2,
+      "player": 2,
+      "algorithm": "Monte Carlo Rollout",
+      "column": 3,
+      "row": 4,
+      "latency_ms": 2.17,
+      "evaluations": [
+        0.02,
+        0.06,
+        0.02,
+        0.08,
+        0.02,
+        0.0,
+        0.02
+      ],
+      "board": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          2,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "turn": 3,
+      "player": 1,
+      "algorithm": "Parallel Minimax",
+      "column": 2,
+      "row": 5,
+      "latency_ms": 1.82,
+      "evaluations": [
+        6.0,
+        6.0,
+        16.0,
+        12.0,
+        16.0,
+        6.0,
+        6.0
+      ],
+      "board": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          2,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          1,
+          1,
+          0,
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "turn": 4,
+      "player": 2,
+      "algorithm": "Monte Carlo Rollout",
+      "column": 4,
+      "row": 5,
+      "latency_ms": 2.33,
+      "evaluations": [
+        0.04,
+        0.08,
+        0.08,
+        0.12,
+        0.17,
+        0.12,
+        0.06
+      ],
+      "board": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          2,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          1,
+          1,
+          2,
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "turn": 5,
+      "player": 1,
+      "algorithm": "Parallel Minimax",
+      "column": 4,
+      "row": 4,
+      "latency_ms": 1.58,
+      "evaluations": [
+        6.0,
+        6.0,
+        -54.0,
+        12.0,
+        16.0,
+        6.0,
+        6.0
+      ],
+      "board": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          1,
+          1,
+          2,
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "turn": 6,
+      "player": 2,
+      "algorithm": "Monte Carlo Rollout",
+      "column": 1,
+      "row": 5,
+      "latency_ms": 2.4,
+      "evaluations": [
+        0.1,
+        0.23,
+        0.21,
+        0.23,
+        0.04,
+        0.08,
+        0.08
+      ],
+      "board": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          1,
+          1,
+          2,
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "turn": 7,
+      "player": 1,
+      "algorithm": "Parallel Minimax",
+      "column": 3,
+      "row": 3,
+      "latency_ms": 1.81,
+      "evaluations": [
+        16.0,
+        16.0,
+        -54.0,
+        32.0,
+        16.0,
+        16.0,
+        16.0
+      ],
+      "board": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          1,
+          1,
+          2,
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "turn": 8,
+      "player": 2,
+      "algorithm": "Monte Carlo Rollout",
+      "column": 1,
+      "row": 4,
+      "latency_ms": 2.38,
+      "evaluations": [
+        0.1,
+        0.27,
+        0.12,
+        0.15,
+        0.08,
+        0.06,
+        0.17
+      ],
+      "board": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          0,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          1,
+          1,
+          2,
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "turn": 9,
+      "player": 1,
+      "algorithm": "Parallel Minimax",
+      "column": 5,
+      "row": 5,
+      "latency_ms": 1.9,
+      "evaluations": [
+        -38.0,
+        -18.0,
+        -18.0,
+        -22.0,
+        -8.0,
+        52.0,
+        -38.0
+      ],
+      "board": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          0,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          1,
+          1,
+          2,
+          1,
+          0
+        ]
+      ]
+    },
+    {
+      "turn": 10,
+      "player": 2,
+      "algorithm": "Monte Carlo Rollout",
+      "column": 1,
+      "row": 3,
+      "latency_ms": 2.36,
+      "evaluations": [
+        0.4,
+        0.52,
+        0.31,
+        0.33,
+        0.42,
+        0.31,
+        0.29
+      ],
+      "board": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          0,
+          1,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          0,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          1,
+          1,
+          2,
+          1,
+          0
+        ]
+      ]
+    },
+    {
+      "turn": 11,
+      "player": 1,
+      "algorithm": "Parallel Minimax",
+      "column": 1,
+      "row": 2,
+      "latency_ms": 1.57,
+      "evaluations": [
+        -50000.0,
+        52.0,
+        -50000.0,
+        -50000.0,
+        -50000.0,
+        -50000.0,
+        -50000.0
+      ],
+      "board": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          0,
+          1,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          0,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          1,
+          1,
+          2,
+          1,
+          0
+        ]
+      ]
+    },
+    {
+      "turn": 12,
+      "player": 2,
+      "algorithm": "Monte Carlo Rollout",
+      "column": 2,
+      "row": 4,
+      "latency_ms": 2.24,
+      "evaluations": [
+        0.27,
+        0.17,
+        0.33,
+        0.19,
+        0.17,
+        0.29,
+        0.29
+      ],
+      "board": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          0,
+          1,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          1,
+          1,
+          2,
+          1,
+          0
+        ]
+      ]
+    },
+    {
+      "turn": 13,
+      "player": 1,
+      "algorithm": "Parallel Minimax",
+      "column": 1,
+      "row": 1,
+      "latency_ms": 1.85,
+      "evaluations": [
+        -50000.0,
+        152.0,
+        -48.0,
+        78.0,
+        72.0,
+        42.0,
+        42.0
+      ],
+      "board": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          0,
+          1,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          1,
+          1,
+          2,
+          1,
+          0
+        ]
+      ]
+    },
+    {
+      "turn": 14,
+      "player": 2,
+      "algorithm": "Monte Carlo Rollout",
+      "column": 0,
+      "row": 5,
+      "latency_ms": 2.11,
+      "evaluations": [
+        0.44,
+        0.4,
+        0.44,
+        0.33,
+        0.42,
+        0.31,
+        0.33
+      ],
+      "board": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          0,
+          1,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          2,
+          2,
+          1,
+          1,
+          2,
+          1,
+          0
+        ]
+      ]
+    },
+    {
+      "turn": 15,
+      "player": 1,
+      "algorithm": "Parallel Minimax",
+      "column": 0,
+      "row": 4,
+      "latency_ms": 1.59,
+      "evaluations": [
+        152.0,
+        -50000.0,
+        -50000.0,
+        -50000.0,
+        -50000.0,
+        -50000.0,
+        -50000.0
+      ],
+      "board": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          0,
+          1,
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          2,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          2,
+          2,
+          1,
+          1,
+          2,
+          1,
+          0
+        ]
+      ]
+    },
+    {
+      "turn": 16,
+      "player": 2,
+      "algorithm": "Monte Carlo Rollout",
+      "column": 3,
+      "row": 2,
+      "latency_ms": 2.37,
+      "evaluations": [
+        0.08,
+        0.15,
+        0.44,
+        0.48,
+        0.31,
+        0.27,
+        0.27
+      ],
+      "board": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          2,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          0,
+          1,
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          2,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          2,
+          2,
+          1,
+          1,
+          2,
+          1,
+          0
+        ]
+      ]
+    },
+    {
+      "turn": 17,
+      "player": 1,
+      "algorithm": "Parallel Minimax",
+      "column": 2,
+      "row": 3,
+      "latency_ms": 1.82,
+      "evaluations": [
+        -50000.0,
+        -50000.0,
+        32.0,
+        -50000.0,
+        -50000.0,
+        -50000.0,
+        -50000.0
+      ],
+      "board": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          2,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          1,
+          1,
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          2,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          2,
+          2,
+          1,
+          1,
+          2,
+          1,
+          0
+        ]
+      ]
+    },
+    {
+      "turn": 18,
+      "player": 2,
+      "algorithm": "Monte Carlo Rollout",
+      "column": 2,
+      "row": 2,
+      "latency_ms": 2.08,
+      "evaluations": [
+        0.06,
+        0.06,
+        0.15,
+        0.04,
+        0.1,
+        0.1,
+        0.08
+      ],
+      "board": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          2,
+          2,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          1,
+          1,
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          2,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          2,
+          2,
+          1,
+          1,
+          2,
+          1,
+          0
+        ]
+      ]
+    },
+    {
+      "turn": 19,
+      "player": 1,
+      "algorithm": "Parallel Minimax",
+      "column": 4,
+      "row": 3,
+      "latency_ms": 1.54,
+      "evaluations": [
+        -28.0,
+        -48.0,
+        -38.0,
+        38.0,
+        52.0,
+        -38.0,
+        -48.0
+      ],
+      "board": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          2,
+          2,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          1,
+          2,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          2,
+          2,
+          1,
+          1,
+          2,
+          1,
+          0
+        ]
+      ]
+    },
+    {
+      "turn": 20,
+      "player": 2,
+      "algorithm": "Monte Carlo Rollout",
+      "column": 3,
+      "row": 1,
+      "latency_ms": 2.4,
+      "evaluations": [
+        0.1,
+        0.17,
+        0.0,
+        0.21,
+        0.19,
+        0.1,
+        0.04
+      ],
+      "board": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          2,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          2,
+          2,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          1,
+          2,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          2,
+          2,
+          1,
+          1,
+          2,
+          1,
+          0
+        ]
+      ]
+    },
+    {
+      "turn": 21,
+      "player": 1,
+      "algorithm": "Parallel Minimax",
+      "column": 4,
+      "row": 2,
+      "latency_ms": 1.74,
+      "evaluations": [
+        -8.0,
+        -28.0,
+        -18.0,
+        -12.0,
+        62.0,
+        -58.0,
+        -28.0
+      ],
+      "board": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          2,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          1,
+          2,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          2,
+          2,
+          1,
+          1,
+          2,
+          1,
+          0
+        ]
+      ]
+    },
+    {
+      "turn": 22,
+      "player": 2,
+      "algorithm": "Monte Carlo Rollout",
+      "column": 4,
+      "row": 1,
+      "latency_ms": 1.98,
+      "evaluations": [
+        0.1,
+        0.08,
+        0.23,
+        0.08,
+        0.46,
+        0.12,
+        0.15
+      ],
+      "board": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          2,
+          2,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          1,
+          2,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          2,
+          2,
+          1,
+          1,
+          2,
+          1,
+          0
+        ]
+      ]
+    },
+    {
+      "turn": 23,
+      "player": 1,
+      "algorithm": "Parallel Minimax",
+      "column": 4,
+      "row": 0,
+      "latency_ms": 1.69,
+      "evaluations": [
+        -50000.0,
+        -50000.0,
+        -50000.0,
+        -50000.0,
+        62.0,
+        -50000.0,
+        -50000.0
+      ],
+      "board": [
+        [
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          2,
+          2,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          1,
+          2,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          2,
+          2,
+          1,
+          1,
+          2,
+          1,
+          0
+        ]
+      ]
+    },
+    {
+      "turn": 24,
+      "player": 2,
+      "algorithm": "Monte Carlo Rollout",
+      "column": 2,
+      "row": 1,
+      "latency_ms": 2.05,
+      "evaluations": [
+        0.08,
+        0.06,
+        0.12,
+        0.12,
+        0.0,
+        0.08,
+        0.1
+      ],
+      "board": [
+        [
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          2,
+          2,
+          2,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          1,
+          2,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          2,
+          2,
+          1,
+          1,
+          2,
+          1,
+          0
+        ]
+      ]
+    },
+    {
+      "turn": 25,
+      "player": 1,
+      "algorithm": "Parallel Minimax",
+      "column": 3,
+      "row": 0,
+      "latency_ms": 1.76,
+      "evaluations": [
+        62.0,
+        62.0,
+        62.0,
+        78.0,
+        -999999.0,
+        -58.0,
+        62.0
+      ],
+      "board": [
+        [
+          0,
+          0,
+          0,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          2,
+          2,
+          2,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          1,
+          2,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          2,
+          2,
+          1,
+          1,
+          2,
+          1,
+          0
+        ]
+      ]
+    },
+    {
+      "turn": 26,
+      "player": 2,
+      "algorithm": "Monte Carlo Rollout",
+      "column": 1,
+      "row": 0,
+      "latency_ms": 2.29,
+      "evaluations": [
+        0.17,
+        0.27,
+        0.25,
+        0.0,
+        0.0,
+        0.08,
+        0.06
+      ],
+      "board": [
+        [
+          0,
+          2,
+          0,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          2,
+          2,
+          2,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          1,
+          2,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          2,
+          2,
+          1,
+          1,
+          2,
+          1,
+          0
+        ]
+      ]
+    },
+    {
+      "turn": 27,
+      "player": 1,
+      "algorithm": "Parallel Minimax",
+      "column": 2,
+      "row": 0,
+      "latency_ms": 1.71,
+      "evaluations": [
+        88.0,
+        -999999.0,
+        178.0,
+        -999999.0,
+        -999999.0,
+        -32.0,
+        78.0
+      ],
+      "board": [
+        [
+          0,
+          2,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          2,
+          2,
+          2,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          1,
+          2,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          2,
+          2,
+          1,
+          1,
+          2,
+          1,
+          0
+        ]
+      ]
+    },
+    {
+      "turn": 28,
+      "player": 2,
+      "algorithm": "Monte Carlo Rollout",
+      "column": 6,
+      "row": 5,
+      "latency_ms": 2.33,
+      "evaluations": [
+        0.19,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.19,
+        0.21
+      ],
+      "board": [
+        [
+          0,
+          2,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          2,
+          2,
+          2,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          1,
+          2,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          2,
+          2,
+          1,
+          1,
+          2,
+          1,
+          2
+        ]
+      ]
+    },
+    {
+      "turn": 29,
+      "player": 1,
+      "algorithm": "Parallel Minimax",
+      "column": 0,
+      "row": 3,
+      "latency_ms": 1.51,
+      "evaluations": [
+        178.0,
+        -999999.0,
+        -999999.0,
+        -999999.0,
+        -999999.0,
+        58.0,
+        168.0
+      ],
+      "board": [
+        [
+          0,
+          2,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          2,
+          2,
+          2,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          1,
+          2,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          1,
+          2,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          2,
+          2,
+          1,
+          1,
+          2,
+          1,
+          2
+        ]
+      ]
+    },
+    {
+      "turn": 30,
+      "player": 2,
+      "algorithm": "Monte Carlo Rollout",
+      "column": 0,
+      "row": 2,
+      "latency_ms": 2.35,
+      "evaluations": [
+        0.25,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.12,
+        0.17
+      ],
+      "board": [
+        [
+          0,
+          2,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          2,
+          2,
+          2,
+          0,
+          0
+        ],
+        [
+          2,
+          1,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          1,
+          2,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          1,
+          2,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          2,
+          2,
+          1,
+          1,
+          2,
+          1,
+          2
+        ]
+      ]
+    },
+    {
+      "turn": 31,
+      "player": 1,
+      "algorithm": "Parallel Minimax",
+      "column": 0,
+      "row": 1,
+      "latency_ms": 1.83,
+      "evaluations": [
+        178.0,
+        -999999.0,
+        -999999.0,
+        -999999.0,
+        -999999.0,
+        58.0,
+        168.0
+      ],
+      "board": [
+        [
+          0,
+          2,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          1,
+          1,
+          2,
+          2,
+          2,
+          0,
+          0
+        ],
+        [
+          2,
+          1,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          1,
+          2,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          1,
+          2,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          2,
+          2,
+          1,
+          1,
+          2,
+          1,
+          2
+        ]
+      ]
+    },
+    {
+      "turn": 32,
+      "player": 2,
+      "algorithm": "Monte Carlo Rollout",
+      "column": 6,
+      "row": 4,
+      "latency_ms": 2.41,
+      "evaluations": [
+        0.27,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.19,
+        0.34
+      ],
+      "board": [
+        [
+          0,
+          2,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          1,
+          1,
+          2,
+          2,
+          2,
+          0,
+          0
+        ],
+        [
+          2,
+          1,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          1,
+          2,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          1,
+          2,
+          2,
+          2,
+          1,
+          0,
+          2
+        ],
+        [
+          2,
+          2,
+          1,
+          1,
+          2,
+          1,
+          2
+        ]
+      ]
+    },
+    {
+      "turn": 33,
+      "player": 1,
+      "algorithm": "Parallel Minimax",
+      "column": 6,
+      "row": 3,
+      "latency_ms": 1.73,
+      "evaluations": [
+        88.0,
+        -999999.0,
+        -999999.0,
+        -999999.0,
+        -999999.0,
+        58.0,
+        258.0
+      ],
+      "board": [
+        [
+          0,
+          2,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          1,
+          1,
+          2,
+          2,
+          2,
+          0,
+          0
+        ],
+        [
+          2,
+          1,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          1,
+          2,
+          1,
+          1,
+          1,
+          0,
+          1
+        ],
+        [
+          1,
+          2,
+          2,
+          2,
+          1,
+          0,
+          2
+        ],
+        [
+          2,
+          2,
+          1,
+          1,
+          2,
+          1,
+          2
+        ]
+      ]
+    },
+    {
+      "turn": 34,
+      "player": 2,
+      "algorithm": "Monte Carlo Rollout",
+      "column": 5,
+      "row": 4,
+      "latency_ms": 2.18,
+      "evaluations": [
+        0.12,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.19,
+        0.12
+      ],
+      "board": [
+        [
+          0,
+          2,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          1,
+          1,
+          2,
+          2,
+          2,
+          0,
+          0
+        ],
+        [
+          2,
+          1,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          1,
+          2,
+          1,
+          1,
+          1,
+          0,
+          1
+        ],
+        [
+          1,
+          2,
+          2,
+          2,
+          1,
+          2,
+          2
+        ],
+        [
+          2,
+          2,
+          1,
+          1,
+          2,
+          1,
+          2
+        ]
+      ]
+    },
+    {
+      "turn": 35,
+      "player": 1,
+      "algorithm": "Parallel Minimax",
+      "column": 5,
+      "row": 3,
+      "latency_ms": 1.65,
+      "evaluations": [
+        58.0,
+        -999999.0,
+        -999999.0,
+        -999999.0,
+        -999999.0,
+        100000.0,
+        68.0
+      ],
+      "board": [
+        [
+          0,
+          2,
+          1,
+          1,
+          1,
+          0,
+          0
+        ],
+        [
+          1,
+          1,
+          2,
+          2,
+          2,
+          0,
+          0
+        ],
+        [
+          2,
+          1,
+          2,
+          2,
+          1,
+          0,
+          0
+        ],
+        [
+          1,
+          2,
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        [
+          1,
+          2,
+          2,
+          2,
+          1,
+          2,
+          2
+        ],
+        [
+          2,
+          2,
+          1,
+          1,
+          2,
+          1,
+          2
+        ]
+      ]
+    }
+  ]
+}')) {
+        gameData = JSON.parse(raw);
+      }
+    }
+    initUI();
+  }
+
+  function initUI() {
+    if (!gameData || !gameData.moves) return;
+
+    // Build 6x7 slots in board
+    const boardEl = document.getElementById('board-grid');
+    boardEl.innerHTML = '';
+    for (let r = 0; r < 6; r++) {
+      for (let c = 0; c < 7; c++) {
+        const slot = document.createElement('div');
+        slot.className = 'c4-slot';
+        slot.id = `slot-${r}-${c}`;
+        const checker = document.createElement('div');
+        checker.className = 'checker';
+        checker.id = `checker-${r}-${c}`;
+        slot.appendChild(checker);
+        boardEl.appendChild(slot);
+      }
+    }
+
+    // Build move log list
+    const logList = document.getElementById('move-log-list');
+    logList.innerHTML = '';
+    gameData.moves.forEach((m, idx) => {
+      const item = document.createElement('div');
+      item.className = `log-item ${m.player === 1 ? 'red' : 'yellow'}`;
+      item.id = `log-item-${idx}`;
+      item.innerHTML = `<strong>T${m.turn}</strong> [${m.player === 1 ? 'GPU 0 - Red' : 'GPU 1 - Yel'}]: Col ${m.column} (${m.latency_ms} ms)`;
+      item.onclick = () => {
+        pause();
+        renderStep(idx);
+      };
+      logList.appendChild(item);
+    });
+
+    renderStep(0);
+  }
+
+  function renderStep(idx) {
+    if (!gameData || !gameData.moves) return;
+    idx = Math.max(0, Math.min(idx, gameData.moves.length - 1));
+    currentStep = idx;
+
+    const move = gameData.moves[idx];
+    document.getElementById('hud-turn-text').textContent = `TURN ${move.turn} / ${gameData.total_turns}`;
+
+    // Highlight active competitor
+    const cardP1 = document.getElementById('card-p1');
+    const cardP2 = document.getElementById('card-p2');
+    if (move.player === 1) {
+      cardP1.classList.add('active-p1');
+      cardP2.classList.remove('active-p2');
+      document.getElementById('p1-latency').textContent = `${move.latency_ms} ms`;
+      document.getElementById('eval-player-tag').textContent = `GPU 0 Minimax Utility`;
+    } else {
+      cardP2.classList.add('active-p2');
+      cardP1.classList.remove('active-p1');
+      document.getElementById('p2-latency').textContent = `${move.latency_ms} ms`;
+      document.getElementById('eval-player-tag').textContent = `GPU 1 Win Rate %`;
+    }
+
+    // Update board state
+    for (let r = 0; r < 6; r++) {
+      for (let c = 0; c < 7; c++) {
+        const val = move.board[r][c];
+        const el = document.getElementById(`checker-${r}-${c}`);
+        el.className = 'checker';
+        if (val === 1) el.classList.add('piece-red');
+        else if (val === 2) el.classList.add('piece-yellow');
+
+        if (r === move.row && c === move.column) {
+          el.classList.add('last-drop');
+        }
+      }
+    }
+
+    // Update evaluation bars
+    const evalContainer = document.getElementById('eval-bars-container');
+    evalContainer.innerHTML = '';
+    const evals = move.evaluations || [];
+    const maxVal = Math.max(...evals.map(v => Math.abs(v)), 1);
+
+    for (let c = 0; c < 7; c++) {
+      const v = evals[c] !== undefined ? evals[c] : 0;
+      const pct = Math.min(100, Math.max(8, Math.round((Math.abs(v) / maxVal) * 100)));
+      const isChosen = c === move.column;
+      const fillColor = move.player === 1 ? 'var(--red-color)' : 'var(--yellow-color)';
+
+      const row = document.createElement('div');
+      row.className = 'eval-row';
+      row.innerHTML = `
+        <span style="width: 38px; ${isChosen ? 'font-weight:700; color:#fff;' : 'color:var(--text-muted);'}">Col ${c}:</span>
+        <div class="bar-bg">
+          <div class="bar-fill" style="width: ${pct}%; background: ${isChosen ? fillColor : 'rgba(255,255,255,0.2)'};"></div>
+        </div>
+        <span style="width: 44px; text-align: right; ${isChosen ? 'font-weight:700; color:' + fillColor : 'color:var(--text-muted);'}">${v}</span>
+      `;
+      evalContainer.appendChild(row);
+    }
+
+    // Update log active item
+    document.querySelectorAll('.log-item').forEach(el => el.classList.remove('active'));
+    const activeLog = document.getElementById(`log-item-${idx}`);
+    if (activeLog) {
+      activeLog.classList.add('active');
+      activeLog.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+
+    // Winner banner
+    if (idx === gameData.moves.length - 1) {
+      document.getElementById('hud-status').textContent = `WINNER: ${gameData.winner_name}`;
+    } else {
+      document.getElementById('hud-status').textContent = `IN PROGRESS`;
+    }
+  }
+
+  function play() {
+    isPlaying = true;
+    document.getElementById('btn-play').innerHTML = '&#10074;&#10074; Pause';
+    playInterval = setInterval(() => {
+      if (currentStep < gameData.moves.length - 1) {
+        renderStep(currentStep + 1);
+      } else {
+        pause();
+      }
+    }, 700);
+  }
+
+  function pause() {
+    isPlaying = false;
+    document.getElementById('btn-play').innerHTML = '&#9654; Play';
+    clearInterval(playInterval);
+  }
+
+  document.getElementById('btn-play').onclick = () => {
+    if (isPlaying) pause();
+    else {
+      if (currentStep >= gameData.moves.length - 1) currentStep = 0;
+      play();
+    }
+  };
+  document.getElementById('btn-prev').onclick = () => { pause(); renderStep(currentStep - 1); };
+  document.getElementById('btn-next').onclick = () => { pause(); renderStep(currentStep + 1); };
+  document.getElementById('btn-reset').onclick = () => { pause(); renderStep(0); };
+
+  loadData();
+</script>
+</body>
+</html>
